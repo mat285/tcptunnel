@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/protocol"
 	"github.com/mat285/tcptunnel/pkg/tcp"
 )
@@ -36,6 +37,7 @@ func (c *Client) Start(ctx context.Context) error {
 }
 
 func (c *Client) listenCommands(ctx context.Context) error {
+	log := logger.GetLogger(ctx)
 	buf := make([]byte, 4096)
 	for {
 		select {
@@ -48,112 +50,54 @@ func (c *Client) listenCommands(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Got a message from the server", n)
+
+		logger.MaybeDebugfContext(ctx, log, "new message from server")
 		if n < 0 {
 			continue
 		}
 
 		switch buf[0] {
 		case protocol.ClientHelloTypeData:
-			fmt.Println("Creating a new data connection")
+			logger.MaybeDebugfContext(ctx, log, "Creating new data connection")
 			c.newDataConnection(ctx)
 		case protocol.TypeServerHello:
 			sh, err := protocol.ParseServerHelloBytes(buf[:n])
 			if err != nil {
-				fmt.Println("error parsing server hello", err)
+				logger.MaybeErrorfContext(ctx, log, "error parsing server hello %s", err.Error())
 				continue
 			}
-			fmt.Println("Got server hello id", sh.ID)
+			logger.MaybeDebugfContext(ctx, log, "Got ID from server %s", sh.ID)
 			c.ID = sh.ID
 		default:
-			fmt.Println("unknown type", buf[0])
+			logger.MaybeErrorfContext(ctx, log, "unknown message type %s", buf[0])
 		}
 
 	}
 	return nil
 }
 
-// func (c *Client) handle(ctx context.Context, conn tcp.Conn) error {
-// 	buf := make([]byte, 4096)
-// 	defer c.handleClose(ctx, conn)
-// 	select {
-// 	case <-ctx.Done():
-// 		return ctx.Err()
-// 	default:
-// 	}
-
-// 	// wait for data on this conn before we open one to the local port
-// 	n, err := conn.Read(ctx, buf)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	local, err := c.forward(ctx)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer local.Close(ctx)
-
-// 	err = local.Write(ctx, buf[:n])
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return tcp.NewTunnel(conn, local).Run(ctx)
-// }
-
-// func (c *Client) handleClose(ctx context.Context, conn tcp.Conn) error {
-// 	if conn == nil {
-// 		return nil
-// 	}
-// 	conn.Close(ctx)
-// 	return c.spawn(ctx)
-// }
-
-// func (c *Client) forward(ctx context.Context) (tcp.Conn, error) {
-// 	return DialTCP(fmt.Sprintf("127.0.0.1:%d", c.config.ForwardPort))
-// }
-
-// func (c *Client) spawnConnections(ctx context.Context) error {
-// 	for i := 0; i < c.config.MaxConnections; i++ {
-// 		err := c.spawn(ctx)
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			continue
-// 		}
-// 	}
-// 	return nil
-// }
-
-// func (c *Client) spawn(ctx context.Context) error {
-// 	conn, err := c.connect(ctx, protocol.ClientHelloTypeData)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	go c.handle(ctx, tcp.WrapConn(conn))
-// 	return nil
-// }
-
 func (c *Client) newDataConnection(ctx context.Context) (net.Conn, error) {
+	log := logger.GetLogger(ctx)
 	dataConn, err := c.connect(ctx, protocol.ClientHelloTypeData)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("Dialing local port")
+	logger.MaybeDebugfContext(ctx, log, "Dialing local port")
 	sconn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", c.config.ForwardPort), 5*time.Second)
 	if err != nil {
-		fmt.Println("error dialing local", err)
+		logger.MaybeErrorfContext(ctx, log, "error dialing local port %s", err.Error())
 		dataConn.Close()
 		return nil, err
 	}
-	fmt.Println("estanlished local server connection")
-
 	tunnel := tcp.NewTunnel(tcp.WrappedConn{Conn: dataConn}, tcp.WrappedConn{Conn: sconn})
 	go tunnel.Run(ctx)
 	return dataConn, nil
 }
 
 func (c *Client) connect(ctx context.Context, t byte) (net.Conn, error) {
+	log := logger.GetLogger(ctx)
+	logger.MaybeDebugfContext(ctx, log, "Dialing Server Address %s", c.config.ServerAddress)
 	conn, err := net.DialTimeout("tcp", c.config.ServerAddress, 5*time.Second)
 	if err != nil {
 		return nil, err
@@ -162,7 +106,7 @@ func (c *Client) connect(ctx context.Context, t byte) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Established connection with", c.config.ServerAddress)
+	logger.MaybeDebugfContext(ctx, log, "Established Connection with Server %s", c.config.ServerAddress)
 	return conn, nil
 }
 
@@ -175,11 +119,3 @@ func (c *Client) generateClientHello(t byte) []byte {
 	}
 	return hello.Serialize()
 }
-
-// func DialTCP(addr string) (tcp.Conn, error) {
-// 	conn, err := net.Dial("tcp", addr)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return tcp.WrapConn(conn), nil
-// }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/protocol"
 	"github.com/mat285/tcptunnel/pkg/tcp"
 )
@@ -34,6 +35,7 @@ func NewServer(cfg Config) *Server {
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	log := logger.GetLogger(ctx)
 	s.lock.Lock()
 	if s.running {
 		s.lock.Unlock()
@@ -42,7 +44,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.running = true
 	s.lock.Unlock()
 
-	fmt.Println("Starting conn server listen")
+	logger.MaybeDebugfContext(ctx, log, "Starting conn server listen")
 	err := s.connServer.Listen(ctx)
 	s.lock.Lock()
 	s.running = false
@@ -70,17 +72,18 @@ func (s *Server) stopBackendsUnsafe() {
 }
 
 func (s *Server) CreateOrVerifyBackend(ctx context.Context, hello *protocol.ClientHello, target *Target) (bool, error) {
+	log := logger.GetLogger(ctx)
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if existing, has := s.backends[hello.Port]; has && existing != nil {
 		if existing.ValidSecret(hello.Secret) {
-			fmt.Println("Added target to existing backend")
+			logger.MaybeDebugfContext(ctx, log, "Added target to existing backend")
 			existing.AddTarget(ctx, target)
 			return false, nil
 		}
 		return false, fmt.Errorf("Invalid secret for existing backend")
 	}
-	fmt.Println("Adding target to new backend", hello.Port)
+	logger.MaybeDebugfContext(ctx, log, "Adding target to new backend for port %d", hello.Port)
 	backend := NewBackend(hello.Port, hello.Secret)
 	s.backends[hello.Port] = backend
 	backend.AddTarget(ctx, target)
@@ -90,25 +93,20 @@ func (s *Server) CreateOrVerifyBackend(ctx context.Context, hello *protocol.Clie
 }
 
 func (s *Server) ConnectTargetDataConn(ctx context.Context, hello *protocol.ClientHello, conn tcp.Conn) error {
-	fmt.Println("Adding conn to target for backend", hello.Port)
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	backend := s.backends[hello.Port]
 	if backend == nil {
-		fmt.Println("backend nil")
 		return fmt.Errorf("No existing backend")
 	}
 	if !backend.ValidSecret(hello.Secret) {
-		fmt.Println("invalid secret")
 		return fmt.Errorf("Invalid secret")
 	}
 	target := s.targets[hello.ID]
 	if target == nil {
 		return fmt.Errorf("No existing target")
 	}
-	fmt.Println("Backend adding target conn")
 	target.AddDataConn(ctx, conn)
-	// backend.AddTargetConn(ctx, hello.ID, conn)
 	return nil
 }
 

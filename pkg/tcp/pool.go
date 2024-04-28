@@ -46,23 +46,17 @@ func (p *Pool) Free() int {
 }
 
 func (p *Pool) Add(c Conn) {
-	// p.lock.Lock()
 	p.all[c] = struct{}{}
 	p.free[c] = struct{}{}
-	// p.lock.Unlock()
 }
 
 func (p *Pool) Remove(c Conn) {
-	// p.lock.Lock()
-	// defer p.lock.Unlock()
 	delete(p.all, c)
 	delete(p.free, c)
 	delete(p.inUse, c)
 }
 
 func (p *Pool) Aquire() (Conn, error) {
-	// p.lock.Lock()
-	// defer p.lock.Unlock()
 	if len(p.free) == 0 {
 		return nil, fmt.Errorf("no available connections")
 	}
@@ -77,32 +71,12 @@ func (p *Pool) Aquire() (Conn, error) {
 }
 
 func (p *Pool) Release(c Conn) {
-	// p.lock.Lock()
-	// defer p.lock.Unlock()
 	if _, has := p.inUse[c]; !has {
 		return
 	}
 	delete(p.inUse, c)
 	p.free[c] = struct{}{}
 }
-
-// func (p *Pool) AquireOrConnect(ctx context.Context) (Conn, error) {
-// 	fmt.Println(p.free)
-// 	conn, err := p.Aquire()
-// 	fmt.Println(err)
-// 	if err == nil {
-// 		return conn, nil
-// 	}
-
-// 	if p.connect == nil {
-// 		return nil, fmt.Errorf("No connection provider available")
-// 	}
-// 	conn, err = p.connect(ctx)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return conn, nil
-// }
 
 func (p *Pool) Notify(c Conn) bool {
 	notified := false
@@ -112,20 +86,11 @@ func (p *Pool) Notify(c Conn) bool {
 		p.waitQueue[0] <- c
 		close(p.waitQueue[0])
 		p.waitQueue = p.waitQueue[1:]
-		// if len(p.waitQueue) == 1 {
-		// 	p.waitQueue = make([]chan Conn, 0)
-		// } else {
-
-		// }
 		notified = true
 	}
 	fmt.Println("done notifying")
 	p.waitLock.Unlock()
 	return notified
-	// // set free if not notified
-	// p.lock.Lock()
-	// p.free[c] = struct{}{}
-	// p.lock.Unlock()
 }
 
 func (p *Pool) Wait(ctx context.Context) (Conn, error) {

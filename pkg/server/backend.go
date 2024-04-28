@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/tcp"
 )
 
@@ -36,7 +37,6 @@ func NewBackend(port uint16, secret []byte) *Backend {
 }
 
 func (b *Backend) AddTarget(ctx context.Context, target *Target) {
-	fmt.Println("entered add target backend")
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.targets[target.ID] = target
@@ -54,6 +54,7 @@ func (b *Backend) Run(ctx context.Context) error {
 }
 
 func (b *Backend) runRestartServer(ctx context.Context) error {
+	log := logger.GetLogger(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -62,21 +63,22 @@ func (b *Backend) runRestartServer(ctx context.Context) error {
 		}
 		err := b.Server.Listen(ctx)
 		if err != nil {
-			fmt.Println("Error running server", err)
+			logger.MaybeErrorfContext(ctx, log, "Error running server %s", err.Error())
 			continue
 		}
 	}
 }
 
 func (b *Backend) NextConn(ctx context.Context) (tcp.Conn, error) {
+	log := logger.GetLogger(ctx)
 	b.lock.Lock()
-
 	defer b.lock.Unlock()
+
 	for _, target := range b.targets {
-		fmt.Println("Requesting connection from ", target.ID)
+		logger.MaybeDebugfContext(ctx, log, "Requesting connection from %d", target.ID)
 		conn, err := target.GetConn(ctx)
 		if err != nil {
-			fmt.Println("Error requesting con from target", target.ID, err)
+			logger.MaybeErrorfContext(ctx, log, "Error requesting con from target %d %s", target.ID, err.Error())
 			continue
 		}
 		return conn, nil

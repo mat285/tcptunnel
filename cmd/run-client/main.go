@@ -23,6 +23,10 @@ func run() error {
 			if err != nil {
 				return err
 			}
+			ctx, err = cfg.Context(ctx)
+			if err != nil {
+				return err
+			}
 			cfg.MaxConnections = 100
 			cfg.ForwardPort = 9191
 			cfg.RemotePort = 1263

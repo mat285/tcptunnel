@@ -6,6 +6,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/blend/go-sdk/logger"
 )
 
 type Server struct {
@@ -33,6 +35,7 @@ func (s *Server) Port() uint16 {
 }
 
 func (s *Server) Listen(ctx context.Context) error {
+	log := logger.GetLogger(ctx)
 	s.lock.Lock()
 	if s.running {
 		s.lock.Unlock()
@@ -43,7 +46,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	s.running = true
 	s.lock.Unlock()
 
-	listener, err := Listen(s.port)
+	listener, err := Listen(ctx, s.port)
 	if err != nil {
 		return err
 	}
@@ -68,13 +71,13 @@ func (s *Server) Listen(ctx context.Context) error {
 
 		conn, err := s.listenForNew(ctx, stop, listener)
 		if err != nil {
-			fmt.Println("Error listening for new tcp connections in server", err)
+			logger.MaybeErrorfContext(ctx, log, "Error listening for new tcp connections in server %s", err.Error())
 			continue
 		}
-		fmt.Println("Got new connection on", s.port, conn.RemoteAddr())
+		// fmt.Println("Got new connection on", s.port, conn.RemoteAddr())
 		err = s.addConn(ctx, conn)
 		if err != nil {
-			fmt.Println("Error adding connection for tcp server", err)
+			logger.MaybeErrorfContext(ctx, log, "Error adding connection for tcp server %s", err.Error())
 			continue
 		}
 	}
@@ -113,7 +116,7 @@ func (s *Server) closeTunnels(ctx context.Context) error {
 func (s *Server) addConn(ctx context.Context, conn net.Conn) error {
 	// s.lock.Lock()
 	// defer s.lock.Unlock()
-	fmt.Println("Requesting connection to forward")
+	// fmt.Println("Requesting connection to forward")
 	upstream, err := s.newConn(ctx)
 	if err != nil {
 		conn.Close()
@@ -148,7 +151,7 @@ func (s *Server) listenForNew(ctx context.Context, stop chan struct{}, listener 
 
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("server accept error", err)
+			logger.MaybeErrorfContext(ctx, logger.GetLogger(ctx), "Error on server accept %s", err.Error())
 			continue
 		}
 		return conn, err

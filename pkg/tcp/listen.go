@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+
+	"github.com/blend/go-sdk/logger"
 )
 
-func Listen(port uint16) (net.Listener, error) {
-	fmt.Println("Starting TCP listen on port", port)
+func Listen(ctx context.Context, port uint16) (net.Listener, error) {
+	logger.MaybeDebugfContext(ctx, logger.GetLogger(ctx), "Starting TCP listen on port %d", port)
 	return net.Listen("tcp", fmt.Sprintf(":%d", port))
 }
 

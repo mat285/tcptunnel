@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/blend/go-sdk/configutil"
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/config"
 )
 
@@ -27,5 +28,6 @@ func (c *Config) Resolve(ctx context.Context, files ...string) error {
 
 func (c Config) Context(ctx context.Context) (context.Context, error) {
 	ctx = WithConfig(ctx, c)
+	ctx = logger.WithLogger(ctx, logger.All())
 	return ctx, nil
 }

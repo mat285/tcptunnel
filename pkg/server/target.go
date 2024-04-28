@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/protocol"
 	"github.com/mat285/tcptunnel/pkg/tcp"
 )
@@ -57,7 +58,7 @@ func (t *Target) AddDataConn(ctx context.Context, conn tcp.Conn) error {
 }
 
 func (t *Target) GetConn(ctx context.Context) (tcp.Conn, error) {
-	fmt.Println("Requesting connection from target", t.ID)
+	logger.MaybeDebugfContext(ctx, logger.GetLogger(ctx), "Requesting connection from target %d", t.ID)
 	err := t.cmdConn.Write(ctx, []byte{protocol.ClientHelloTypeData})
 	if err != nil {
 		return nil, err

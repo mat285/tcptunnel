@@ -23,7 +23,12 @@ func run() error {
 			if err != nil {
 				return err
 			}
+			ctx, err = cfg.Context(ctx)
+			if err != nil {
+				return err
+			}
 			cfg.Port = 7890
+			cfg.Secret = []byte("11111111111111111111111111111111")
 
 			s := server.NewServer(cfg)
 			return s.Start(ctx)

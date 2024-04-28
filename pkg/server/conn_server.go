@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"math/rand"
 	"net"
 	"sync"
 
+	"github.com/blend/go-sdk/logger"
 	"github.com/mat285/tcptunnel/pkg/protocol"
 	"github.com/mat285/tcptunnel/pkg/tcp"
 )
@@ -43,6 +45,7 @@ func (s *ConnServer) Stop() error {
 }
 
 func (s *ConnServer) Listen(ctx context.Context) error {
+	log := logger.GetLogger(ctx)
 	s.lock.Lock()
 	if s.running {
 		s.lock.Unlock()
@@ -53,7 +56,7 @@ func (s *ConnServer) Listen(ctx context.Context) error {
 	s.running = true
 	s.lock.Unlock()
 
-	listener, err := tcp.Listen(s.port)
+	listener, err := tcp.Listen(ctx, s.port)
 	if err != nil {
 		return err
 	}
@@ -77,23 +80,30 @@ func (s *ConnServer) Listen(ctx context.Context) error {
 
 		conn, err := s.listenForNew(ctx, stop, listener)
 		if err != nil {
-			fmt.Println("Error listening for new tcp connections in server", err)
+
+			logger.MaybeErrorfContext(ctx, log, "Error listening for new tcp connections in server %s", err.Error())
 			continue
 		}
 		clientHello, err := protocol.ParseClientHello(conn)
 		if err != nil {
 			conn.Close()
-			fmt.Println("Error verifying connection for tcp server", err)
+			logger.MaybeErrorfContext(ctx, log, "Error verifying connection for tcp server %s", err.Error())
+			continue
+		}
+
+		if subtle.ConstantTimeCompare(clientHello.Secret, s.server.config.Secret) != 1 {
+			// deny connection
+			conn.Close()
+			logger.MaybeErrorfContext(ctx, log, "Wrong Server secret")
 			continue
 		}
 
 		if clientHello.Type == protocol.ClientHelloTypeData {
-			// err = s.handleNewDataConn(ctx, clientHello, tcp.WrappedConn{Conn: conn})
 
 			err = s.server.ConnectTargetDataConn(ctx, clientHello, tcp.WrappedConn{Conn: conn})
 			if err != nil {
 				conn.Close()
-				fmt.Println("Error adding data con", err)
+				logger.MaybeErrorfContext(ctx, log, "Error adding data connection %s", err.Error())
 				continue
 			}
 		} else {
@@ -110,11 +120,9 @@ func (s *ConnServer) Listen(ctx context.Context) error {
 			_, err = s.server.CreateOrVerifyBackend(ctx, clientHello, target)
 			if err != nil {
 				conn.Close()
-				fmt.Println("Error verifying or creating backend", err)
+				logger.MaybeErrorfContext(ctx, log, "Error verifying or creating backend %s", err.Error())
 				continue
 			}
-			fmt.Println("Sending server hello")
-
 			conn.Write(serverHello.Serialize())
 		}
 
@@ -122,6 +130,7 @@ func (s *ConnServer) Listen(ctx context.Context) error {
 }
 
 func (s *ConnServer) listenForNew(ctx context.Context, stop chan struct{}, listener net.Listener) (net.Conn, error) {
+	log := logger.GetLogger(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -133,7 +142,7 @@ func (s *ConnServer) listenForNew(ctx context.Context, stop chan struct{}, liste
 
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("server accept error", err)
+			logger.MaybeErrorfContext(ctx, log, "Error accepting connection %s", err.Error())
 			continue
 		}
 		return conn, err
@@ -143,12 +152,3 @@ func (s *ConnServer) listenForNew(ctx context.Context, stop chan struct{}, liste
 func (s *ConnServer) RequestDataConnForTarget(ctx context.Context, target *Target) error {
 	return target.cmdConn.Write(ctx, []byte{protocol.ClientHelloTypeData})
 }
-
-// func (s *ConnServer) GetConnectionForTarget(ctx context.Context, target *Target) (tcp.Conn, error) {
-// 	fmt.Println("Requesting connection from target", target.ID)
-// 	err := target.cmdConn.Write(ctx, []byte{protocol.ClientHelloTypeData})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return target.WaitForConn(ctx)
-// }
